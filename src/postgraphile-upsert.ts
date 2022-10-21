@@ -257,13 +257,11 @@ function createUpsertField({
               {}
             );
 
-            const sqlColumns: { names: string[] }[] = [];
+            const sqlColumns: { names: string[]; valueType: string }[] = [];
             const conflictOnlyColumns: { names: string[] }[] = [];
             const sqlValues: unknown[] = [];
             const inputData: Record<string, unknown>[] =
               input[inflection.tableFieldName(table)];
-
-            console.log("inputData", inputData);
 
             // Find the unique constraints
             const uniqueConstraints = allUniqueConstraints.filter(
@@ -309,16 +307,12 @@ function createUpsertField({
               primaryKeyConstraint?.keyAttributes.map(({ name }) => name) ?? []
             );
 
-            console.log("inputData", inputData);
-
             // Pre-process our data inputs from the payload (what was manually passed in)
             const inputDataKeys = new Set(Object.keys(inputData[0]));
-            console.log("inputDataKeys", inputDataKeys);
 
             const inputDataColumns = new Set(
               [...inputDataKeys].map((key) => fieldToAttributeMap[key].name)
             );
-            console.log("inputDataColumns", inputDataColumns);
 
             // Construct a super-set of fields passed up plus columns with default values
             // (as these can be set before the constraint kicks into place)
@@ -330,8 +324,6 @@ function createUpsertField({
                 )
                 .map(({ name }) => name),
             ]);
-
-            console.log("inputDataColumnsWithDefaults", inputDataColumns);
 
             /**
              * Depending on whether a where clause was passed, we want to determine which
@@ -398,7 +390,6 @@ function createUpsertField({
 
                 if (hasOwnProperty(singleInputData, fieldName)) {
                   const val = singleInputData[fieldName];
-                  console.log("val", val);
 
                   // The user passed a where clause condition value that does not match the upsert input value for the same property
                   if (hasWhereClauseValue && whereClauseValue !== val) {
@@ -435,8 +426,6 @@ function createUpsertField({
                   )} = excluded.${sql.identifier(col.names[0])}`
               );
 
-            console.log(sqlValues.map((val) => sql.join(val, ", ")).join(","));
-
             // SQL query for upsert mutations
             // see: http://www.postgresqltutorial.com/postgresql-upsert/
             const conflictAction =
@@ -453,13 +442,16 @@ function createUpsertField({
                     sqlColumns.length
                       ? sql.fragment`(${sql.join(sqlColumns, ", ")})
                       values 
-                        (${sql.join(sqlValues[0], ", ")}),
-                        (${sql.join(sqlValues[1], ", ")})
+                        (${sql.join(
+                          sqlValues.map(
+                            (dataGroup) =>
+                              sql.fragment`${sql.join(dataGroup, ", ")}`
+                          ),
+                          "),("
+                        )})
                       on conflict ${conflictAction}`
                       : sql.fragment`default values`
                   } returning *`;
-
-            console.log("mutationQuery", mutationQuery);
 
             const rows = await viaTemporaryTable(
               pgClient,
